@@ -72,7 +72,10 @@ app.post("/rate-limit", async (req, res) => {
       // Parse Express request body as PreParseRequest format
       const preParseRequest = req.body as PreParseRequest;
       if (preParseRequest.rawRequest.operationName) {
-        span.setAttribute("graphql.operation.name", preParseRequest.rawRequest.operationName);
+        span.setAttribute(
+          "graphql.operation.name",
+          preParseRequest.rawRequest.operationName,
+        );
       }
       const headers = req.headers as Record<string, string>;
 
@@ -82,7 +85,7 @@ app.post("/rate-limit", async (req, res) => {
     } catch (error) {
       span.setStatus({
         code: SpanStatusCode.ERROR,
-        message: String(error)
+        message: String(error),
       });
       span.recordException(error as Error);
       console.error("Rate limiting error:", error);

@@ -122,7 +122,10 @@ export default class RateLimitPlugin {
       try {
         span.setAttribute("internal.visibility", String("user"));
         if (request.rawRequest.operationName) {
-          span.setAttribute("graphql.operation.name", request.rawRequest.operationName);
+          span.setAttribute(
+            "graphql.operation.name",
+            request.rawRequest.operationName,
+          );
         }
         span.setAttribute("session.role", request.session.role);
 
@@ -132,7 +135,8 @@ export default class RateLimitPlugin {
           span.setAttribute("redis.status", this.redis.status);
 
           if (
-            this.config.rate_limit.unavailable_behavior.fallback_mode === "allow"
+            this.config.rate_limit.unavailable_behavior.fallback_mode ===
+            "allow"
           ) {
             log("Redis unavailable - falling back to allow mode");
             span.setAttribute("rate_limit.fallback", "allow");
@@ -165,7 +169,9 @@ export default class RateLimitPlugin {
         ) {
           log("Request excluded due to role: %s", request.session.role);
           span.setAttribute("rate_limit.excluded", true);
-          span.addEvent("Request excluded as role is excluded from rate limiting");
+          span.addEvent(
+            "Request excluded as role is excluded from rate limiting",
+          );
           span.end();
           return { statusCode: 204 }; // Continue
         }
@@ -186,32 +192,38 @@ export default class RateLimitPlugin {
         span.setAttribute("rate_limit.key", key);
 
         // Use the defined command instead of eval
-        const result = await tracer.startActiveSpan("checkRateLimit", async (innerSpan) => {
-          try {
-            innerSpan.setAttribute("internal.visibility", String("user"));
-            innerSpan.setAttribute("rate_limit.key", key);
-            innerSpan.setAttribute("rate_limit.limit", this.config.rate_limit.default_limit);
-            innerSpan.setAttribute("rate_limit.window.start", windowStart);
-            innerSpan.setAttribute("rate_limit.window.end", now);
-            innerSpan.setAttribute("rate_limit.request.id", uniqueRequestId);
-            return await (this.redis as any).checkRateLimit(
-              key,
-              this.config.rate_limit.default_limit,
-              now,
-              windowStart,
-              this.config.rate_limit.time_window,
-              uniqueRequestId,
-            );
-          } catch (error) {
-            innerSpan.setStatus({
-              code: SpanStatusCode.ERROR,
-              message: String(error),
-            });
-            throw error;
-          } finally {
-            innerSpan.end();
-          }
-        }) as number;
+        const result = (await tracer.startActiveSpan(
+          "checkRateLimit",
+          async (innerSpan) => {
+            try {
+              innerSpan.setAttribute("internal.visibility", String("user"));
+              innerSpan.setAttribute("rate_limit.key", key);
+              innerSpan.setAttribute(
+                "rate_limit.limit",
+                this.config.rate_limit.default_limit,
+              );
+              innerSpan.setAttribute("rate_limit.window.start", windowStart);
+              innerSpan.setAttribute("rate_limit.window.end", now);
+              innerSpan.setAttribute("rate_limit.request.id", uniqueRequestId);
+              return await (this.redis as any).checkRateLimit(
+                key,
+                this.config.rate_limit.default_limit,
+                now,
+                windowStart,
+                this.config.rate_limit.time_window,
+                uniqueRequestId,
+              );
+            } catch (error) {
+              innerSpan.setStatus({
+                code: SpanStatusCode.ERROR,
+                message: String(error),
+              });
+              throw error;
+            } finally {
+              innerSpan.end();
+            }
+          },
+        )) as number;
 
         logEval(
           "Rate limit count: %d/%d",
@@ -220,7 +232,10 @@ export default class RateLimitPlugin {
         );
 
         span.setAttribute("rate_limit.count", result);
-        span.setAttribute("rate_limit.limit", this.config.rate_limit.default_limit);
+        span.setAttribute(
+          "rate_limit.limit",
+          this.config.rate_limit.default_limit,
+        );
 
         if (result >= this.config.rate_limit.default_limit) {
           log("Rate limit exceeded for key: %s", key);
