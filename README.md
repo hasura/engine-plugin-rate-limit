@@ -40,6 +40,7 @@ export const config: Config = {
 ```
 
 The configuration includes:
+
 - `headers`: Authentication headers for Hasura DDN
 - `redis_url`: Redis connection URL
 - `rate_limit`: Rate limiting configuration. The rate limiting can be configured using the following parameters:
@@ -60,29 +61,33 @@ The configuration includes:
 ### Local Development
 
 1. Clone the repository:
+
    ```sh
    git clone https://github.com/hasura/engine-plugin-rate-limit.git
    cd engine-plugin-rate-limit
    ```
 
 2. Install dependencies:
+
    ```sh
    npm install
    ```
 
 3. Build the project:
+
    ```sh
    npm run build
    ```
 
 4. Start the dependencies (for local development):
+
    ```sh
    docker-compose up redis
    ```
 
 5. Start the development server with debug logs:
    ```sh
-   DEBUG=rate-limit* node dist/index.js 
+   DEBUG=rate-limit* node dist/index.js
    ```
 
 ### Docker Development
@@ -94,6 +99,7 @@ docker-compose up
 ```
 
 This will start:
+
 - The rate limiting plugin on port 3001
 - Redis server on port 6379
 - Health checks every 30 seconds

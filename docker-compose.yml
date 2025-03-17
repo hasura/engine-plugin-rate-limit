@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   rate-limit:
@@ -36,7 +36,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 3
-  
+
   jaeger:
     image: jaegertracing/all-in-one:1.55
     restart: always
