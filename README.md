@@ -46,11 +46,18 @@ The `rate-limit.json` file looks like this:
     "excluded_roles": ["admin"],
     "key_config": {
       "from_headers": ["x-user-id", "x-client-id"],
-      "from_session_variables": ["user.id"]
+      "from_session_variables": ["user.id"],
+      "from_role": true
     },
     "unavailable_behavior": {
       "fallback_mode": "deny"
-    }
+    },
+    "role_based_limits": [
+      {
+        "role": "user",
+        "limit": 11
+      }
+    ]
   }
 }
 ```
@@ -62,8 +69,12 @@ The rate limiting configuration includes:
   - `default_limit`: The default rate limit per window
   - `time_window`: The time window in seconds
   - `excluded_roles`: Roles that are excluded from rate limiting
-  - `key_config`: Configuration for generating rate limit keys
+  - `key_config`: Configuration for generating rate limit keys:
+    - `from_headers`: Headers to include in the rate limit key (if header is not found in the request, it is skipped)
+    - `from_session_variables`: Session variables to include in the rate limit key (if variable is not found in the request, it is skipped)
+    - `from_role`: Whether to include the role in the rate limit key
   - `unavailable_behavior`: Behavior when Redis is unavailable
+  - `role_based_limits`: Role-based rate limits (this takes precedence over the default limit)
 
 ## Using the plugin
 
@@ -79,9 +90,6 @@ Add the following service to your DDN's `docker-compose.yaml`:
 rate-limit:
   build:
     context: https://github.com/hasura/engine-plugin-rate-limit.git
-    target: production
-  command: ["node", "dist/index.js"]
-  container_name: rate-limit-plugin
   ports:
     - "3001:3001"
   environment:
@@ -102,7 +110,6 @@ rate-limit:
 
 redis:
   image: redis:latest
-  container_name: redis-local
   ports:
     - "6379:6379"
   command: redis-server --appendonly yes
@@ -148,11 +155,18 @@ The `rate-limit.json` file looks like this:
     "excluded_roles": [],
     "key_config": {
       "from_headers": [],
-      "from_session_variables": ["x-hasura-role"]
+      "from_session_variables": [],
+      "from_role": true
     },
     "unavailable_behavior": {
       "fallback_mode": "deny"
-    }
+    },
+    "role_based_limits": [
+      {
+        "role": "user",
+        "limit": 11
+      }
+    ]
   }
 }
 ```
@@ -191,14 +205,7 @@ The plugin includes OpenTelemetry integration for observability:
 - Supports both W3C and B3 trace context propagation
 - Includes HTTP instrumentation for detailed request tracking
 
-Configure tracing endpoint and authentication for local development:
-
-```env
-OTEL_EXPORTER_OTLP_ENDPOINT=http://local.hasura.dev:4317/v1/traces
-OTEL_EXPORTER_PAT=your-pat-here
-```
-
-For DDN, you can use the following configuration:
+Configure tracing endpoint and authentication:
 
 ```env
 OTEL_EXPORTER_OTLP_ENDPOINT=https://gateway.otlp.hasura.io:443/v1/traces

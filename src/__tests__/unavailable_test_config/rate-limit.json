@@ -6,10 +6,17 @@
     "excluded_roles": ["admin"],
     "key_config": {
       "from_headers": ["x-user-id", "x-client-id"],
-      "from_session_variables": ["user.id"]
+      "from_session_variables": ["user.id"],
+      "from_role": true
     },
     "unavailable_behavior": {
       "fallback_mode": "deny"
-    }
+    },
+    "role_based_limits": [
+      {
+        "role": "user",
+        "limit": 11
+      }
+    ]
   }
 }

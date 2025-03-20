@@ -20,10 +20,17 @@ export const rateLimitConfigSchema = z.object({
     key_config: z.object({
       from_headers: z.array(z.string()),
       from_session_variables: z.array(z.string()),
+      from_role: z.boolean(),
     }),
     unavailable_behavior: z.object({
       fallback_mode: z.union([z.literal("allow"), z.literal("deny")]),
     }),
+    role_based_limits: z.array(
+      z.object({
+        role: z.string(),
+        limit: z.number(),
+      }),
+    ),
   }),
 });
 
@@ -87,10 +94,22 @@ export default class RateLimitPlugin {
       try {
         span.setAttribute("internal.visibility", String("user"));
         const parts: string[] = [];
+        // Add role to key
+        if (this.config.rate_limit.key_config.from_role) {
+          parts.push(`role:${request.session.role}`);
+          logKey("Adding role to key: %s", request.session.role);
+        }
 
         // Add headers to key
         for (const header of this.config.rate_limit.key_config.from_headers) {
           const value = headers[header] || "";
+          if (!value) {
+            logKey("Header not found: %s", header);
+            span.addEvent(
+              `WARNING: Header "${header}" not found for key generation, skipping.`,
+            );
+            continue;
+          }
           parts.push(`${header}:${value}`);
           logKey("Adding header to key: %s=%s", header, value);
         }
@@ -99,6 +118,13 @@ export default class RateLimitPlugin {
         for (const variable of this.config.rate_limit.key_config
           .from_session_variables) {
           const value = request.session.variables[variable] || "";
+          if (!value) {
+            logKey("Session variable not found: %s", variable);
+            span.addEvent(
+              `WARNING: Session variable "${variable}" not found for key generation, skipping.`,
+            );
+            continue;
+          }
           parts.push(`${variable}:${value}`);
           logKey("Adding session variable to key: %s=%s", variable, value);
         }
@@ -204,6 +230,10 @@ export default class RateLimitPlugin {
             try {
               innerSpan.setAttribute("internal.visibility", String("user"));
               innerSpan.setAttribute("rate_limit.key", key);
+              const limit =
+                this.config.rate_limit.role_based_limits.find(
+                  (limit) => limit.role === request.session.role,
+                )?.limit || this.config.rate_limit.default_limit;
               innerSpan.setAttribute(
                 "rate_limit.limit",
                 this.config.rate_limit.default_limit,

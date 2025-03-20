@@ -128,7 +128,7 @@ describe("RateLimitPlugin", async () => {
   });
 
   test("should build correct rate limit key", async () => {
-    const key = `x-user-id:test-user-123:x-client-id:test-client-456:user.id:test-user-123`;
+    const key = `role:user:x-user-id:test-user-123:x-client-id:test-client-456:user.id:test-user-123`;
     await redis.del(key);
 
     await plugin.handleRequest(mockRequest, mockHeaders);
