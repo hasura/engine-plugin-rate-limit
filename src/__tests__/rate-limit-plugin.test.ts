@@ -120,4 +120,32 @@ describe("RateLimitPlugin", () => {
     const exists = await redis.exists(key);
     expect(exists).toBe(1);
   });
+
+  test("should handle role-based limits", async () => {
+    const testRequest = {
+      ...mockRequest,
+      session: {
+        ...mockRequest.session,
+        role: "test",
+      },
+    };
+
+    const key = `role:test:x-user-id:test-user-123:x-client-id:test-client-456:user.id:test-user-123`;
+    await redis.del(key);
+
+    const maxLimit =
+      testConfig.rate_limit.role_based_limits.find(
+        (limit) => limit.role === "test",
+      )?.limit || testConfig.rate_limit.default_limit;
+
+    for (let i = 0; i < maxLimit; i++) {
+      const result = await plugin.handleRequest(testRequest, mockHeaders);
+      expect(result.statusCode).toBe(204);
+    }
+
+    // Next request should be blocked
+    const result = await plugin.handleRequest(testRequest, mockHeaders);
+    expect(result.statusCode).toBe(400);
+    expect(result.body?.extensions?.code).toBe("RATE_LIMIT_EXCEEDED");
+  });
 });

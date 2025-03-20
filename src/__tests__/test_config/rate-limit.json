@@ -14,7 +14,7 @@
     },
     "role_based_limits": [
       {
-        "role": "user",
+        "role": "test",
         "limit": 11
       }
     ]

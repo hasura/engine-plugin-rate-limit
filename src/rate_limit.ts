@@ -222,6 +222,10 @@ export default class RateLimitPlugin {
         span.setAttribute("rate_limit.window.start", windowStart);
         span.setAttribute("rate_limit.window.end", now);
         span.setAttribute("rate_limit.key", key);
+        const limit =
+          this.config.rate_limit.role_based_limits.find(
+            (limit) => limit.role === request.session.role,
+          )?.limit || this.config.rate_limit.default_limit;
 
         // Use the defined command instead of eval
         const result = (await tracer.startActiveSpan(
@@ -230,20 +234,13 @@ export default class RateLimitPlugin {
             try {
               innerSpan.setAttribute("internal.visibility", String("user"));
               innerSpan.setAttribute("rate_limit.key", key);
-              const limit =
-                this.config.rate_limit.role_based_limits.find(
-                  (limit) => limit.role === request.session.role,
-                )?.limit || this.config.rate_limit.default_limit;
-              innerSpan.setAttribute(
-                "rate_limit.limit",
-                this.config.rate_limit.default_limit,
-              );
+              innerSpan.setAttribute("rate_limit.limit", limit);
               innerSpan.setAttribute("rate_limit.window.start", windowStart);
               innerSpan.setAttribute("rate_limit.window.end", now);
               innerSpan.setAttribute("rate_limit.request.id", uniqueRequestId);
               return await (this.redis as any).checkRateLimit(
                 key,
-                this.config.rate_limit.default_limit,
+                limit,
                 now,
                 windowStart,
                 this.config.rate_limit.time_window,
@@ -261,19 +258,12 @@ export default class RateLimitPlugin {
           },
         )) as number;
 
-        logEval(
-          "Rate limit count: %d/%d",
-          result,
-          this.config.rate_limit.default_limit,
-        );
+        logEval("Rate limit count: %d/%d", result, limit);
 
         span.setAttribute("rate_limit.count", result);
-        span.setAttribute(
-          "rate_limit.limit",
-          this.config.rate_limit.default_limit,
-        );
+        span.setAttribute("rate_limit.limit", limit);
 
-        if (result >= this.config.rate_limit.default_limit) {
+        if (result >= limit) {
           log("Rate limit exceeded for key: %s", key);
           span.setAttribute("rate_limit.allowed", false);
           span.addEvent("Rate limit exceeded!");
