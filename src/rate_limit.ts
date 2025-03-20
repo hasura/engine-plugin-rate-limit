@@ -234,10 +234,7 @@ export default class RateLimitPlugin {
             try {
               innerSpan.setAttribute("internal.visibility", String("user"));
               innerSpan.setAttribute("rate_limit.key", key);
-              innerSpan.setAttribute(
-                "rate_limit.limit",
-                limit,
-              );
+              innerSpan.setAttribute("rate_limit.limit", limit);
               innerSpan.setAttribute("rate_limit.window.start", windowStart);
               innerSpan.setAttribute("rate_limit.window.end", now);
               innerSpan.setAttribute("rate_limit.request.id", uniqueRequestId);
@@ -261,17 +258,10 @@ export default class RateLimitPlugin {
           },
         )) as number;
 
-        logEval(
-          "Rate limit count: %d/%d",
-          result,
-          limit,
-        );
+        logEval("Rate limit count: %d/%d", result, limit);
 
         span.setAttribute("rate_limit.count", result);
-        span.setAttribute(
-          "rate_limit.limit",
-          limit,
-        );
+        span.setAttribute("rate_limit.limit", limit);
 
         if (result >= limit) {
           log("Rate limit exceeded for key: %s", key);
