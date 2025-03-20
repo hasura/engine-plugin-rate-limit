@@ -4,28 +4,37 @@ import path from "path";
 import debug from "debug";
 import { randomUUID } from "crypto";
 import { tracer } from "./tracer";
-import { Span, SpanStatusCode } from "@opentelemetry/api";
+import { SpanStatusCode } from "@opentelemetry/api";
+import { z } from "zod";
 
 const log = debug("rate-limit");
 const logKey = log.extend("key");
 const logEval = log.extend("eval");
 
-export interface Config {
-  headers: { "hasura-m-auth": string };
-  redis_url: string;
-  rate_limit: {
-    default_limit: number;
-    time_window: number;
-    excluded_roles: string[];
-    key_config: {
-      from_headers: string[];
-      from_session_variables: string[];
-    };
-    unavailable_behavior: {
-      fallback_mode: "allow" | "deny";
-    };
-  };
-}
+export const rateLimitConfigSchema = z.object({
+  redis_url: z.string(),
+  rate_limit: z.object({
+    default_limit: z.number(),
+    time_window: z.number(),
+    excluded_roles: z.array(z.string()),
+    key_config: z.object({
+      from_headers: z.array(z.string()),
+      from_session_variables: z.array(z.string()),
+      from_role: z.boolean(),
+    }),
+    unavailable_behavior: z.object({
+      fallback_mode: z.union([z.literal("allow"), z.literal("deny")]),
+    }),
+    role_based_limits: z.array(
+      z.object({
+        role: z.string(),
+        limit: z.number(),
+      }),
+    ),
+  }),
+});
+
+export type RateLimitConfig = z.infer<typeof rateLimitConfigSchema>;
 
 export interface PreParseRequest {
   rawRequest: {
@@ -41,11 +50,15 @@ export interface PreParseRequest {
 
 export default class RateLimitPlugin {
   private redis: Redis;
-  private config: Config;
+  private config: RateLimitConfig;
 
-  constructor(config: Config) {
-    this.config = config;
-    this.redis = new Redis(config.redis_url);
+  constructor() {
+    const configDirectory =
+      process.env.HASURA_DDN_PLUGIN_CONFIG_PATH || "config";
+    const configPath = `${configDirectory}/rate-limit.json`;
+    const rawConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    this.config = rateLimitConfigSchema.parse(rawConfig);
+    this.redis = new Redis(this.config.redis_url);
 
     // Handle Redis connection errors
     this.redis.on("error", (err) => {
@@ -81,10 +94,22 @@ export default class RateLimitPlugin {
       try {
         span.setAttribute("internal.visibility", String("user"));
         const parts: string[] = [];
+        // Add role to key
+        if (this.config.rate_limit.key_config.from_role) {
+          parts.push(`role:${request.session.role}`);
+          logKey("Adding role to key: %s", request.session.role);
+        }
 
         // Add headers to key
         for (const header of this.config.rate_limit.key_config.from_headers) {
           const value = headers[header] || "";
+          if (!value) {
+            logKey("Header not found: %s", header);
+            span.addEvent(
+              `WARNING: Header "${header}" not found for key generation, skipping.`,
+            );
+            continue;
+          }
           parts.push(`${header}:${value}`);
           logKey("Adding header to key: %s=%s", header, value);
         }
@@ -93,6 +118,13 @@ export default class RateLimitPlugin {
         for (const variable of this.config.rate_limit.key_config
           .from_session_variables) {
           const value = request.session.variables[variable] || "";
+          if (!value) {
+            logKey("Session variable not found: %s", variable);
+            span.addEvent(
+              `WARNING: Session variable "${variable}" not found for key generation, skipping.`,
+            );
+            continue;
+          }
           parts.push(`${variable}:${value}`);
           logKey("Adding session variable to key: %s=%s", variable, value);
         }
@@ -198,6 +230,10 @@ export default class RateLimitPlugin {
             try {
               innerSpan.setAttribute("internal.visibility", String("user"));
               innerSpan.setAttribute("rate_limit.key", key);
+              const limit =
+                this.config.rate_limit.role_based_limits.find(
+                  (limit) => limit.role === request.session.role,
+                )?.limit || this.config.rate_limit.default_limit;
               innerSpan.setAttribute(
                 "rate_limit.limit",
                 this.config.rate_limit.default_limit,

@@ -4,16 +4,13 @@ services:
   rate-limit:
     build:
       context: .
-      target: production
-    command: ["node", "dist/index.js"]
-    container_name: rate-limit-plugin
     ports:
-      - "3001:3001"
+      - "3000:3000"
     environment:
-      - PORT=3001
+      - PORT=3000
       - DEBUG=rate-limit*
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318/v1/traces
-      - REDIS_URL=redis://redis:6379
+      - HASURA_DDN_PLUGIN_CONFIG_PATH=sample_config
     depends_on:
       redis:
         condition: service_healthy
@@ -22,10 +19,11 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    volumes:
+      - ./sample_config:/app/sample_config
 
   redis:
     image: redis:latest
-    container_name: redis-local
     ports:
       - "6379:6379"
     volumes:

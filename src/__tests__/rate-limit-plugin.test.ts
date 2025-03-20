@@ -1,28 +1,20 @@
-import { test, describe, before, after } from "node:test";
-import assert from "node:assert";
+import { afterAll, beforeAll, describe, expect, test } from "@jest/globals";
 import Redis from "ioredis";
-import RateLimitPlugin, { Config, PreParseRequest } from "../rate_limit";
+import RateLimitPlugin, {
+  RateLimitConfig,
+  PreParseRequest,
+} from "../rate_limit";
+import { readFileSync } from "node:fs";
 
-describe("RateLimitPlugin", async () => {
+describe("RateLimitPlugin", () => {
   let redis: Redis;
   let plugin: RateLimitPlugin;
 
-  const testConfig: Config = {
-    headers: { "hasura-m-auth": "test-auth" },
-    redis_url: "redis://localhost:6379",
-    rate_limit: {
-      default_limit: 3,
-      time_window: 60,
-      excluded_roles: ["admin"],
-      key_config: {
-        from_headers: ["x-user-id", "x-client-id"],
-        from_session_variables: ["user.id"],
-      },
-      unavailable_behavior: {
-        fallback_mode: "deny",
-      },
-    },
-  };
+  process.env.HASURA_DDN_PLUGIN_CONFIG_PATH = "src/__tests__/test_config";
+  const testConfigPath = `${process.env.HASURA_DDN_PLUGIN_CONFIG_PATH}/rate-limit.json`;
+  const testConfig = JSON.parse(
+    readFileSync(testConfigPath, "utf8"),
+  ) as RateLimitConfig;
 
   const mockRequest: PreParseRequest = {
     rawRequest: {
@@ -43,12 +35,12 @@ describe("RateLimitPlugin", async () => {
     "x-client-id": "test-client-456",
   };
 
-  before(async () => {
+  beforeAll(async () => {
     redis = new Redis(testConfig.redis_url);
-    plugin = new RateLimitPlugin(testConfig);
+    plugin = new RateLimitPlugin();
   });
 
-  after(async () => {
+  afterAll(async () => {
     // Close both Redis connections
     await Promise.all([redis.quit(), plugin["redis"].disconnect()]);
   });
@@ -60,19 +52,11 @@ describe("RateLimitPlugin", async () => {
 
     // First request should be allowed
     const result1 = await plugin.handleRequest(mockRequest, mockHeaders);
-    assert.strictEqual(
-      result1.statusCode,
-      204,
-      "First request should be allowed",
-    );
+    expect(result1.statusCode).toBe(204);
 
     // Second request should be allowed
     const result2 = await plugin.handleRequest(mockRequest, mockHeaders);
-    assert.strictEqual(
-      result2.statusCode,
-      204,
-      "Second request should be allowed",
-    );
+    expect(result2.statusCode).toBe(204);
   });
 
   test("should block requests exceeding rate limit", async () => {
@@ -86,8 +70,8 @@ describe("RateLimitPlugin", async () => {
 
     // Next request should be blocked
     const result = await plugin.handleRequest(mockRequest, mockHeaders);
-    assert.strictEqual(result.statusCode, 400, "Request should be blocked");
-    assert.strictEqual(result.body?.extensions?.code, "RATE_LIMIT_EXCEEDED");
+    expect(result.statusCode).toBe(400);
+    expect(result.body?.extensions?.code).toBe("RATE_LIMIT_EXCEEDED");
   });
 
   test("should exclude admin roles from rate limiting", async () => {
@@ -101,26 +85,14 @@ describe("RateLimitPlugin", async () => {
 
     // Should allow admin requests regardless of rate limit
     const result = await plugin.handleRequest(adminRequest, mockHeaders);
-    assert.strictEqual(
-      result.statusCode,
-      204,
-      "Admin request should be allowed",
-    );
+    expect(result.statusCode).toBe(204);
   });
 
   test("should handle Redis unavailability according to fallback mode", async () => {
     // Create a new plugin instance with Redis connection to invalid port
-    const unavailableConfig: Config = {
-      ...testConfig,
-      redis_url: "redis://localhost:6380", // Invalid port
-      rate_limit: {
-        ...testConfig.rate_limit,
-        unavailable_behavior: {
-          fallback_mode: "deny",
-        },
-      },
-    };
-    const unavailablePlugin = new RateLimitPlugin(unavailableConfig);
+    process.env.HASURA_DDN_PLUGIN_CONFIG_PATH =
+      "src/__tests__/unavailable_test_config";
+    const unavailablePlugin = new RateLimitPlugin();
 
     try {
       // Wait for Redis connection to fail
@@ -130,12 +102,8 @@ describe("RateLimitPlugin", async () => {
         mockRequest,
         mockHeaders,
       );
-      assert.strictEqual(
-        result.statusCode,
-        503,
-        "Should return service unavailable",
-      );
-      assert.strictEqual(result.body?.extensions?.code, "REDIS_UNAVAILABLE");
+      expect(result.statusCode).toBe(500);
+      expect(result.body?.extensions?.code).toBe("REDIS_UNAVAILABLE");
     } finally {
       // Force disconnect the Redis connection
       unavailablePlugin["redis"].disconnect();
@@ -143,13 +111,13 @@ describe("RateLimitPlugin", async () => {
   });
 
   test("should build correct rate limit key", async () => {
-    const key = `x-user-id:test-user-123:x-client-id:test-client-456:user.id:test-user-123`;
+    const key = `role:user:x-user-id:test-user-123:x-client-id:test-client-456:user.id:test-user-123`;
     await redis.del(key);
 
     await plugin.handleRequest(mockRequest, mockHeaders);
 
     // Check if the key exists in Redis
     const exists = await redis.exists(key);
-    assert.strictEqual(exists, 1, "Rate limit key should exist in Redis");
+    expect(exists).toBe(1);
   });
 });

@@ -1,0 +1,22 @@
+{
+  "redis_url": "redis://redis:6379",
+  "rate_limit": {
+    "default_limit": 10,
+    "time_window": 60,
+    "excluded_roles": [],
+    "key_config": {
+      "from_headers": [],
+      "from_session_variables": [],
+      "from_role": true
+    },
+    "unavailable_behavior": {
+      "fallback_mode": "deny"
+    },
+    "role_based_limits": [
+      {
+        "role": "user",
+        "limit": 11
+      }
+    ]
+  }
+}
