@@ -1,5 +1,4 @@
-import { test, describe, before, after } from "node:test";
-import assert from "node:assert";
+import { afterAll, beforeAll, describe, expect, test } from "@jest/globals";
 import Redis from "ioredis";
 import RateLimitPlugin, {
   RateLimitConfig,
@@ -7,7 +6,7 @@ import RateLimitPlugin, {
 } from "../rate_limit";
 import { readFileSync } from "node:fs";
 
-describe("RateLimitPlugin", async () => {
+describe("RateLimitPlugin", () => {
   let redis: Redis;
   let plugin: RateLimitPlugin;
 
@@ -36,12 +35,12 @@ describe("RateLimitPlugin", async () => {
     "x-client-id": "test-client-456",
   };
 
-  before(async () => {
+  beforeAll(async () => {
     redis = new Redis(testConfig.redis_url);
     plugin = new RateLimitPlugin();
   });
 
-  after(async () => {
+  afterAll(async () => {
     // Close both Redis connections
     await Promise.all([redis.quit(), plugin["redis"].disconnect()]);
   });
@@ -53,19 +52,11 @@ describe("RateLimitPlugin", async () => {
 
     // First request should be allowed
     const result1 = await plugin.handleRequest(mockRequest, mockHeaders);
-    assert.strictEqual(
-      result1.statusCode,
-      204,
-      "First request should be allowed",
-    );
+    expect(result1.statusCode).toBe(204);
 
     // Second request should be allowed
     const result2 = await plugin.handleRequest(mockRequest, mockHeaders);
-    assert.strictEqual(
-      result2.statusCode,
-      204,
-      "Second request should be allowed",
-    );
+    expect(result2.statusCode).toBe(204);
   });
 
   test("should block requests exceeding rate limit", async () => {
@@ -79,8 +70,8 @@ describe("RateLimitPlugin", async () => {
 
     // Next request should be blocked
     const result = await plugin.handleRequest(mockRequest, mockHeaders);
-    assert.strictEqual(result.statusCode, 400, "Request should be blocked");
-    assert.strictEqual(result.body?.extensions?.code, "RATE_LIMIT_EXCEEDED");
+    expect(result.statusCode).toBe(400);
+    expect(result.body?.extensions?.code).toBe("RATE_LIMIT_EXCEEDED");
   });
 
   test("should exclude admin roles from rate limiting", async () => {
@@ -94,11 +85,7 @@ describe("RateLimitPlugin", async () => {
 
     // Should allow admin requests regardless of rate limit
     const result = await plugin.handleRequest(adminRequest, mockHeaders);
-    assert.strictEqual(
-      result.statusCode,
-      204,
-      "Admin request should be allowed",
-    );
+    expect(result.statusCode).toBe(204);
   });
 
   test("should handle Redis unavailability according to fallback mode", async () => {
@@ -115,12 +102,8 @@ describe("RateLimitPlugin", async () => {
         mockRequest,
         mockHeaders,
       );
-      assert.strictEqual(
-        result.statusCode,
-        500,
-        "Should return service unavailable",
-      );
-      assert.strictEqual(result.body?.extensions?.code, "REDIS_UNAVAILABLE");
+      expect(result.statusCode).toBe(500);
+      expect(result.body?.extensions?.code).toBe("REDIS_UNAVAILABLE");
     } finally {
       // Force disconnect the Redis connection
       unavailablePlugin["redis"].disconnect();
@@ -135,6 +118,6 @@ describe("RateLimitPlugin", async () => {
 
     // Check if the key exists in Redis
     const exists = await redis.exists(key);
-    assert.strictEqual(exists, 1, "Rate limit key should exist in Redis");
+    expect(exists).toBe(1);
   });
 });

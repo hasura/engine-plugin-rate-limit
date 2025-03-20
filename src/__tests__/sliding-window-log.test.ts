@@ -1,10 +1,9 @@
-import { test, describe, after } from "node:test";
-import assert from "node:assert";
+import { test, describe, afterAll, expect } from "@jest/globals";
 import { readFileSync } from "fs";
 import { join } from "path";
 import Redis from "ioredis";
 
-describe("Sliding Window Log Rate Limiter", async () => {
+describe("Sliding Window Log Rate Limiter", () => {
   const redis = new Redis();
 
   // Load the Lua script
@@ -37,11 +36,7 @@ describe("Sliding Window Log Rate Limiter", async () => {
       window,
       "req1",
     );
-    assert.strictEqual(
-      result1,
-      0,
-      "First request should show 0 previous requests",
-    );
+    expect(result1).toBe(0);
 
     // Second request
     const result2 = await (redis as any).checkRateLimit(
@@ -52,11 +47,7 @@ describe("Sliding Window Log Rate Limiter", async () => {
       window,
       "req2",
     );
-    assert.strictEqual(
-      result2,
-      1,
-      "Second request should show 1 previous request",
-    );
+    expect(result2).toBe(1);
   });
 
   test("should respect rate limit", async () => {
@@ -95,11 +86,7 @@ describe("Sliding Window Log Rate Limiter", async () => {
       window,
       "req3",
     );
-    assert.strictEqual(
-      result >= limit,
-      true,
-      "Should indicate rate limit exceeded",
-    );
+    expect(result).toBeGreaterThanOrEqual(limit);
   });
 
   test("should expire old requests", async () => {
@@ -142,14 +129,10 @@ describe("Sliding Window Log Rate Limiter", async () => {
       window,
       "req3",
     );
-    assert.strictEqual(
-      result,
-      0,
-      "Should show 0 previous requests after window expired",
-    );
+    expect(result).toBe(0);
   });
 
-  after(async () => {
+  afterAll(async () => {
     // Cleanup
     await redis.quit();
   });
