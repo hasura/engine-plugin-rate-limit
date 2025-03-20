@@ -11,8 +11,8 @@ describe("RateLimitPlugin", async () => {
   let redis: Redis;
   let plugin: RateLimitPlugin;
 
-  process.env.CONFIG_DIRECTORY = "src/__tests__/test_config";
-  const testConfigPath = `${process.env.CONFIG_DIRECTORY}/rate-limit.json`;
+  process.env.HASURA_DDN_PLUGIN_CONFIG_PATH = "src/__tests__/test_config";
+  const testConfigPath = `${process.env.HASURA_DDN_PLUGIN_CONFIG_PATH}/rate-limit.json`;
   const testConfig = JSON.parse(
     readFileSync(testConfigPath, "utf8"),
   ) as RateLimitConfig;
@@ -103,7 +103,8 @@ describe("RateLimitPlugin", async () => {
 
   test("should handle Redis unavailability according to fallback mode", async () => {
     // Create a new plugin instance with Redis connection to invalid port
-    process.env.CONFIG_DIRECTORY = "src/__tests__/unavailable_test_config";
+    process.env.HASURA_DDN_PLUGIN_CONFIG_PATH =
+      "src/__tests__/unavailable_test_config";
     const unavailablePlugin = new RateLimitPlugin();
 
     try {

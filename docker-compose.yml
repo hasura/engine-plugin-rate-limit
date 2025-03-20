@@ -13,7 +13,7 @@ services:
       - PORT=3000
       - DEBUG=rate-limit*
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318/v1/traces
-      - CONFIG_DIRECTORY=sample_config
+      - HASURA_DDN_PLUGIN_CONFIG_PATH=sample_config
     depends_on:
       redis:
         condition: service_healthy

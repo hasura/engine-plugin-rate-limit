@@ -13,6 +13,15 @@ import express from "express";
 import RateLimitPlugin, { PreParseRequest } from "./rate_limit";
 import { tracer } from "./tracer";
 import { readFileSync } from "node:fs";
+import { z } from "zod";
+
+const configSchema = z.object({
+  headers: z.object({
+    "hasura-m-auth": z.string(),
+  }),
+});
+
+type Config = z.infer<typeof configSchema>;
 
 interface TraceHeaders {
   [key: string]: string;
@@ -50,14 +59,14 @@ provider.register();
 
 registerInstrumentations({ instrumentations: [new HttpInstrumentation()] });
 
-interface Config {
-  headers: {
-    "hasura-m-auth": string;
-  };
-}
-
 const app = express();
 app.use(express.json());
+
+// Read configuration from environment variables
+const configDirectory = process.env.HASURA_DDN_PLUGIN_CONFIG_PATH || "config";
+const configPath = `${configDirectory}/configuration.json`;
+const rawConfig = JSON.parse(readFileSync(configPath, "utf8"));
+const config = configSchema.parse(rawConfig);
 
 // Health check endpoint
 app.get("/health", (req, res) => {
@@ -76,25 +85,6 @@ app.use((req, res, next) => {
 app.use(async (req, res, next) => {
   return tracer.startActiveSpan("authenticate-middleware", async (span) => {
     span.setAttribute("internal.visibility", String("user"));
-    // Read configuration from environment variables
-    const configDirectory = process.env.CONFIG_DIRECTORY || "config";
-    const configPath = `${configDirectory}/configuration.json`;
-    const config = await tracer.startActiveSpan("readConfig", async (span) => {
-      span.setAttribute("internal.visibility", String("user"));
-      span.setAttribute("config.path", configPath);
-      try {
-        const config = JSON.parse(readFileSync(configPath, "utf8")) as Config;
-        return config;
-      } catch (error) {
-        span.setStatus({
-          code: SpanStatusCode.ERROR,
-          message: String(error),
-        });
-        throw error;
-      } finally {
-        span.end();
-      }
-    });
     tracer.startActiveSpan("authenticate", async (authSpan) => {
       authSpan.setAttribute("internal.visibility", String("user"));
 

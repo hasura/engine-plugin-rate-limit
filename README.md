@@ -17,7 +17,7 @@ OpenTelemetry integration for observability.
 ## Configuration
 
 The plugin can be configured using the configuration files. The plugin reads the configuration from a directory.
-The default directory is `config`, but it can be overridden using the `CONFIG_DIRECTORY` environment variable.
+The default directory is `config`, but it can be overridden using the `HASURA_DDN_PLUGIN_CONFIG_PATH` environment variable.
 The configuration files are:
 
 - `configuration.json`: Contains the authentication headers for the plugin server
@@ -88,7 +88,7 @@ rate-limit:
     - PORT=3001
     - DEBUG=rate-limit*
     - OTEL_EXPORTER_OTLP_ENDPOINT=http://local.hasura.dev:4317/v1/traces
-    - CONFIG_DIRECTORY=plugin_config
+    - HASURA_DDN_PLUGIN_CONFIG_PATH=plugin_config
   depends_on:
     redis:
       condition: service_healthy

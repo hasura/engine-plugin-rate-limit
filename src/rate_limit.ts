@@ -4,27 +4,30 @@ import path from "path";
 import debug from "debug";
 import { randomUUID } from "crypto";
 import { tracer } from "./tracer";
-import { Span, SpanStatusCode } from "@opentelemetry/api";
+import { SpanStatusCode } from "@opentelemetry/api";
+import { z } from "zod";
 
 const log = debug("rate-limit");
 const logKey = log.extend("key");
 const logEval = log.extend("eval");
 
-export interface RateLimitConfig {
-  redis_url: string;
-  rate_limit: {
-    default_limit: number;
-    time_window: number;
-    excluded_roles: string[];
-    key_config: {
-      from_headers: string[];
-      from_session_variables: string[];
-    };
-    unavailable_behavior: {
-      fallback_mode: "allow" | "deny";
-    };
-  };
-}
+export const rateLimitConfigSchema = z.object({
+  redis_url: z.string(),
+  rate_limit: z.object({
+    default_limit: z.number(),
+    time_window: z.number(),
+    excluded_roles: z.array(z.string()),
+    key_config: z.object({
+      from_headers: z.array(z.string()),
+      from_session_variables: z.array(z.string()),
+    }),
+    unavailable_behavior: z.object({
+      fallback_mode: z.union([z.literal("allow"), z.literal("deny")]),
+    }),
+  }),
+});
+
+export type RateLimitConfig = z.infer<typeof rateLimitConfigSchema>;
 
 export interface PreParseRequest {
   rawRequest: {
@@ -43,13 +46,12 @@ export default class RateLimitPlugin {
   private config: RateLimitConfig;
 
   constructor() {
-    const configDirectory = process.env.CONFIG_DIRECTORY || "config";
+    const configDirectory =
+      process.env.HASURA_DDN_PLUGIN_CONFIG_PATH || "config";
     const configPath = `${configDirectory}/rate-limit.json`;
-    const config = JSON.parse(
-      fs.readFileSync(configPath, "utf8"),
-    ) as RateLimitConfig;
-    this.config = config;
-    this.redis = new Redis(config.redis_url);
+    const rawConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    this.config = rateLimitConfigSchema.parse(rawConfig);
+    this.redis = new Redis(this.config.redis_url);
 
     // Handle Redis connection errors
     this.redis.on("error", (err) => {
