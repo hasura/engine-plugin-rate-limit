@@ -135,3 +135,6 @@ dist
 # direnv
 .direnv/
 .envrc.local
+
+# Config
+config

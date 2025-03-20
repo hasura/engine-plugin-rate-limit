@@ -10,8 +10,7 @@ const log = debug("rate-limit");
 const logKey = log.extend("key");
 const logEval = log.extend("eval");
 
-export interface Config {
-  headers: { "hasura-m-auth": string };
+export interface RateLimitConfig {
   redis_url: string;
   rate_limit: {
     default_limit: number;
@@ -41,9 +40,14 @@ export interface PreParseRequest {
 
 export default class RateLimitPlugin {
   private redis: Redis;
-  private config: Config;
+  private config: RateLimitConfig;
 
-  constructor(config: Config) {
+  constructor() {
+    const configDirectory = process.env.CONFIG_DIRECTORY || "config";
+    const configPath = `${configDirectory}/rate-limit.json`;
+    const config = JSON.parse(
+      fs.readFileSync(configPath, "utf8"),
+    ) as RateLimitConfig;
     this.config = config;
     this.redis = new Redis(config.redis_url);
 

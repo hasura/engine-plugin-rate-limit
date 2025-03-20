@@ -11,8 +11,8 @@ import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
 import express from "express";
 import RateLimitPlugin, { PreParseRequest } from "./rate_limit";
-import { config } from "./config";
 import { tracer } from "./tracer";
+import { readFileSync } from "node:fs";
 
 interface TraceHeaders {
   [key: string]: string;
@@ -50,8 +50,19 @@ provider.register();
 
 registerInstrumentations({ instrumentations: [new HttpInstrumentation()] });
 
+interface Config {
+  headers: {
+    "hasura-m-auth": string;
+  };
+}
+
 const app = express();
 app.use(express.json());
+
+// Health check endpoint
+app.get("/health", (req, res) => {
+  res.json({ status: "healthy" });
+});
 
 // Add middleware to extract trace context
 app.use((req, res, next) => {
@@ -61,8 +72,50 @@ app.use((req, res, next) => {
   });
 });
 
+// Add middleware for authentication
+app.use(async (req, res, next) => {
+  return tracer.startActiveSpan("authenticate-middleware", async (span) => {
+    span.setAttribute("internal.visibility", String("user"));
+    // Read configuration from environment variables
+    const configDirectory = process.env.CONFIG_DIRECTORY || "config";
+    const configPath = `${configDirectory}/configuration.json`;
+    const config = await tracer.startActiveSpan("readConfig", async (span) => {
+      span.setAttribute("internal.visibility", String("user"));
+      span.setAttribute("config.path", configPath);
+      try {
+        const config = JSON.parse(readFileSync(configPath, "utf8")) as Config;
+        return config;
+      } catch (error) {
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: String(error),
+        });
+        throw error;
+      } finally {
+        span.end();
+      }
+    });
+    tracer.startActiveSpan("authenticate", async (authSpan) => {
+      authSpan.setAttribute("internal.visibility", String("user"));
+
+      if (config.headers["hasura-m-auth"] !== req.headers["hasura-m-auth"]) {
+        authSpan.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: "Invalid authentication token",
+        });
+        authSpan.end();
+        res.status(400).json({ error: "Unauthorized request" });
+      } else {
+        authSpan.end();
+        next();
+      }
+    });
+    span.end();
+  });
+});
+
 // Initialize the rate limit plugin
-const rateLimiter = new RateLimitPlugin(config);
+const rateLimiter = new RateLimitPlugin();
 
 // Rate-limit endpoint
 app.post("/rate-limit", async (req, res) => {
@@ -78,9 +131,7 @@ app.post("/rate-limit", async (req, res) => {
         );
       }
       const headers = req.headers as Record<string, string>;
-
       const result = await rateLimiter.handleRequest(preParseRequest, headers);
-
       res.status(result.statusCode).json(result.body);
     } catch (error) {
       span.setStatus({
@@ -94,11 +145,6 @@ app.post("/rate-limit", async (req, res) => {
       span.end();
     }
   });
-});
-
-// Health check endpoint
-app.get("/health", (req, res) => {
-  res.json({ status: "healthy" });
 });
 
 const PORT = process.env.PORT || 3000;

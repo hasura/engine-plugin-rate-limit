@@ -16,32 +16,47 @@ OpenTelemetry integration for observability.
 
 ## Configuration
 
-The plugin can be configured using the configuration file `config.ts`.
+The plugin can be configured using the configuration files. The plugin reads the configuration from a directory.
+The default directory is `config`, but it can be overridden using the `CONFIG_DIRECTORY` environment variable.
+The configuration files are:
 
-```typescript
-export const config: Config = {
-  headers: {
-    "hasura-m-auth": "your-auth-token",
-  },
-  redis_url: process.env.REDIS_URL || "redis://localhost:6379",
-  rate_limit: {
-    default_limit: 10, // 10 requests per window
-    time_window: 60, // 60 seconds
-    excluded_roles: ["admin"],
-    key_config: {
-      from_headers: ["x-user-id", "x-client-id"],
-      from_session_variables: ["user.id"],
-    },
-    unavailable_behavior: {
-      fallback_mode: "deny",
-    },
-  },
-};
+- `configuration.json`: Contains the authentication headers for the plugin server
+- `rate-limit.json`: Contains the rate limiting configuration
+
+The `configuration.json` file looks like this:
+
+```json
+{
+  "headers": {
+    "hasura-m-auth": "your-auth-token"
+  }
+}
 ```
 
-The configuration includes:
+For authenticating requests, the plugin expects the `hasura-m-auth` header to match the value in the configuration file.
 
-- `headers`: Authentication headers for Hasura DDN
+The `rate-limit.json` file looks like this:
+
+```json
+{
+  "redis_url": "redis://localhost:6379",
+  "rate_limit": {
+    "default_limit": 10,
+    "time_window": 60,
+    "excluded_roles": ["admin"],
+    "key_config": {
+      "from_headers": ["x-user-id", "x-client-id"],
+      "from_session_variables": ["user.id"]
+    },
+    "unavailable_behavior": {
+      "fallback_mode": "deny"
+    }
+  }
+}
+```
+
+The rate limiting configuration includes:
+
 - `redis_url`: Redis connection URL
 - `rate_limit`: Rate limiting configuration. The rate limiting can be configured using the following parameters:
   - `default_limit`: The default rate limit per window
@@ -50,52 +65,52 @@ The configuration includes:
   - `key_config`: Configuration for generating rate limit keys
   - `unavailable_behavior`: Behavior when Redis is unavailable
 
-## Development
+## Using the plugin
 
 ### Prerequisites
 
-- Node.js 22 or later
-- Redis server
-- Docker and Docker Compose (for containerized development)
-
-### Local Development
-
-1. Clone the repository:
-
-   ```sh
-   git clone https://github.com/hasura/engine-plugin-rate-limit.git
-   cd engine-plugin-rate-limit
-   ```
-
-2. Install dependencies:
-
-   ```sh
-   npm install
-   ```
-
-3. Build the project:
-
-   ```sh
-   npm run build
-   ```
-
-4. Start the dependencies (for local development):
-
-   ```sh
-   docker-compose up redis
-   ```
-
-5. Start the development server with debug logs:
-   ```sh
-   DEBUG=rate-limit* node dist/index.js
-   ```
+- Docker and Docker Compose
 
 ### Docker Development
 
-Use Docker Compose to run the plugin with Redis:
+Add the following service to your DDN's `docker-compose.yaml`:
 
-```sh
-docker-compose up
+```yaml
+rate-limit:
+  build:
+    context: https://github.com/hasura/engine-plugin-rate-limit.git
+    target: production
+  command: ["node", "dist/index.js"]
+  container_name: rate-limit-plugin
+  ports:
+    - "3001:3001"
+  environment:
+    - PORT=3001
+    - DEBUG=rate-limit*
+    - OTEL_EXPORTER_OTLP_ENDPOINT=http://local.hasura.dev:4317/v1/traces
+    - CONFIG_DIRECTORY=plugin_config
+  depends_on:
+    redis:
+      condition: service_healthy
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+  volumes:
+    - ./rate_limit_config:/app/plugin_config
+
+redis:
+  image: redis:latest
+  container_name: redis-local
+  ports:
+    - "6379:6379"
+  command: redis-server --appendonly yes
+  healthcheck:
+    test: ["CMD", "redis-cli", "ping"]
+    interval: 5s
+    timeout: 3s
+    retries: 3
 ```
 
 This will start:
@@ -103,7 +118,46 @@ This will start:
 - The rate limiting plugin on port 3001
 - Redis server on port 6379
 - Health checks every 30 seconds
-- Jaeger on port 4002
+
+Next, create a directory named `rate_limit_config` in the same directory as your `docker-compose.yaml` file. And add the following files to it:
+
+```bash
+rate_limit_config/
+├── configuration.json
+└── rate-limit.json
+```
+
+The `configuration.json` file looks like this:
+
+```json
+{
+  "headers": {
+    "hasura-m-auth": "your-auth-token"
+  }
+}
+```
+
+The `rate-limit.json` file looks like this:
+
+```json
+{
+  "redis_url": "redis://redis:6379",
+  "rate_limit": {
+    "default_limit": 10,
+    "time_window": 60,
+    "excluded_roles": [],
+    "key_config": {
+      "from_headers": [],
+      "from_session_variables": ["x-hasura-role"]
+    },
+    "unavailable_behavior": {
+      "fallback_mode": "deny"
+    }
+  }
+}
+```
+
+On changing the configuration, please restart the plugin container.
 
 ## Using the plugin in DDN
 
@@ -137,10 +191,10 @@ The plugin includes OpenTelemetry integration for observability:
 - Supports both W3C and B3 trace context propagation
 - Includes HTTP instrumentation for detailed request tracking
 
-Configure tracing endpoint and authentication:
+Configure tracing endpoint and authentication for local development:
 
 ```env
-OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318/v1/traces
+OTEL_EXPORTER_OTLP_ENDPOINT=http://local.hasura.dev:4317/v1/traces
 OTEL_EXPORTER_PAT=your-pat-here
 ```
 
@@ -154,3 +208,4 @@ OTEL_EXPORTER_PAT=your-pat-here
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+Refer to [CONTRIBUTING.md](CONTRIBUTING.md) for more details.

@@ -15,6 +15,7 @@ for i in $(seq 1 $NUM_REQUESTS); do
     # Store the response headers and body in variables
     response=$(curl -X POST http://localhost:3000/rate-limit \
         -H "Content-Type: application/json" \
+        -H "hasura-m-auth: your-auth-token" \
         -H "x-user-id: user123" \
         -H "x-client-id: client456" \
         -H "x-hasura-role: user" \

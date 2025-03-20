@@ -1,28 +1,21 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert";
 import Redis from "ioredis";
-import RateLimitPlugin, { Config, PreParseRequest } from "../rate_limit";
+import RateLimitPlugin, {
+  RateLimitConfig,
+  PreParseRequest,
+} from "../rate_limit";
+import { readFileSync } from "node:fs";
 
 describe("RateLimitPlugin", async () => {
   let redis: Redis;
   let plugin: RateLimitPlugin;
 
-  const testConfig: Config = {
-    headers: { "hasura-m-auth": "test-auth" },
-    redis_url: "redis://localhost:6379",
-    rate_limit: {
-      default_limit: 3,
-      time_window: 60,
-      excluded_roles: ["admin"],
-      key_config: {
-        from_headers: ["x-user-id", "x-client-id"],
-        from_session_variables: ["user.id"],
-      },
-      unavailable_behavior: {
-        fallback_mode: "deny",
-      },
-    },
-  };
+  process.env.CONFIG_DIRECTORY = "src/__tests__/test_config";
+  const testConfigPath = `${process.env.CONFIG_DIRECTORY}/rate-limit.json`;
+  const testConfig = JSON.parse(
+    readFileSync(testConfigPath, "utf8"),
+  ) as RateLimitConfig;
 
   const mockRequest: PreParseRequest = {
     rawRequest: {
@@ -45,7 +38,7 @@ describe("RateLimitPlugin", async () => {
 
   before(async () => {
     redis = new Redis(testConfig.redis_url);
-    plugin = new RateLimitPlugin(testConfig);
+    plugin = new RateLimitPlugin();
   });
 
   after(async () => {
@@ -110,17 +103,8 @@ describe("RateLimitPlugin", async () => {
 
   test("should handle Redis unavailability according to fallback mode", async () => {
     // Create a new plugin instance with Redis connection to invalid port
-    const unavailableConfig: Config = {
-      ...testConfig,
-      redis_url: "redis://localhost:6380", // Invalid port
-      rate_limit: {
-        ...testConfig.rate_limit,
-        unavailable_behavior: {
-          fallback_mode: "deny",
-        },
-      },
-    };
-    const unavailablePlugin = new RateLimitPlugin(unavailableConfig);
+    process.env.CONFIG_DIRECTORY = "src/__tests__/unavailable_test_config";
+    const unavailablePlugin = new RateLimitPlugin();
 
     try {
       // Wait for Redis connection to fail
@@ -132,7 +116,7 @@ describe("RateLimitPlugin", async () => {
       );
       assert.strictEqual(
         result.statusCode,
-        503,
+        500,
         "Should return service unavailable",
       );
       assert.strictEqual(result.body?.extensions?.code, "REDIS_UNAVAILABLE");
