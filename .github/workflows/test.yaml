@@ -1,0 +1,25 @@
+on: [push]
+
+name: test
+
+jobs:
+  build:
+    name: Run tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install tools
+        run: |
+          npm install
+      - name: start dependencies
+        uses: hoverkraft-tech/compose-action@v2.2.0
+        with:
+          compose-file: "./docker-compose.yml"
+          down-flags: "--volumes"
+          up-flags: "--wait"
+          services: |
+            redis
+      - name: run tests
+        run: |
+          npm run test
